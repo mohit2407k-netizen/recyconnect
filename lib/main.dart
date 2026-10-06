@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -23,6 +24,7 @@ final ValueNotifier<String> languageNotifier =
 String? testOtp;
 List<Map<String, dynamic>> createdLots = [];
 Map<String, dynamic>? activeLot;
+String collectorUpiId = '';
 final FlutterTts flutterTts = FlutterTts();
 
 Future<void> speakText(String english, String hindi) async {
@@ -2282,109 +2284,220 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  Future<void> loadProfileData() async {
+  final user = FirebaseAuth.instance.currentUser;
+
+  if (user == null) return;
+
+  try {
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+
+    if (!doc.exists) return;
+
+    final data = doc.data();
+
+    if (!mounted) return;
+
+    setState(() {
+      userName = data?['name']?.toString() ?? 'RecyConnect User';
+      userPhone = data?['phone']?.toString() ?? '+91 XXXXX XXXXX';
+      userEmail = data?['email']?.toString() ?? 'user@recyconnect.app';
+      userAddress = data?['address']?.toString() ?? 'Add your address';
+      userUpiId = data?['upiId']?.toString().trim() ?? '';
+
+      // Keep global UPI value updated too
+      collectorUpiId = userUpiId;
+    });
+  } catch (e) {
+    debugPrint('Profile load error: $e');
+  }
+}
+
   String userName = 'RecyConnect User';
   String userPhone = '+91 XXXXX XXXXX';
   String userEmail = 'user@recyconnect.app';
   String userAddress = 'Add your address';
+  String userUpiId = '';
+  @override
+void initState() {
+  super.initState();
+  loadProfileData();
+}
 
-  void editProfile() {
-    final nameController = TextEditingController(text: userName);
-    final phoneController = TextEditingController(text: userPhone);
-    final emailController = TextEditingController(text: userEmail);
-    final addressController = TextEditingController(text: userAddress);
+ void editProfile() {
+  final nameController = TextEditingController(text: userName);
+  final phoneController = TextEditingController(text: userPhone);
+  final emailController = TextEditingController(text: userEmail);
+  final addressController = TextEditingController(text: userAddress);
+  final upiController = TextEditingController(text: userUpiId);
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text(
-            'Edit Profile',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF12352A),
-            ),
+  showDialog(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text(
+          'Edit Profile',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF12352A),
           ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Full Name',
-                    prefixIcon: Icon(Icons.person_outline),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: phoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'Phone Number',
-                    prefixIcon: Icon(Icons.phone_outlined),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.email_outlined),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: addressController,
-                  maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: 'Address',
-                    prefixIcon: Icon(Icons.location_on_outlined),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  userName = nameController.text.trim().isEmpty
-                      ? 'RecyConnect User'
-                      : nameController.text.trim();
+        ),
 
-                  userPhone = phoneController.text.trim().isEmpty
-                      ? '+91 XXXXX XXXXX'
-                      : phoneController.text.trim();
-
-                  userEmail = emailController.text.trim().isEmpty
-                      ? 'user@recyconnect.app'
-                      : emailController.text.trim();
-
-                  userAddress = addressController.text.trim().isEmpty
-                      ? 'Add your address'
-                      : addressController.text.trim();
-                });
-
-                Navigator.pop(context);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF008F4C),
-                foregroundColor: Colors.white,
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Full Name',
+                  prefixIcon: Icon(Icons.person_outline),
+                ),
               ),
-              child: const Text('Save'),
+
+              const SizedBox(height: 12),
+
+              TextField(
+                controller: phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Phone Number',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: Icon(Icons.email_outlined),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              TextField(
+                controller: addressController,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Address',
+                  prefixIcon: Icon(Icons.location_on_outlined),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              TextField(
+                controller: upiController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Collector UPI ID',
+                  hintText: 'example@upi',
+                  prefixIcon: Icon(
+                    Icons.account_balance_wallet_outlined,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+            },
+            child: const Text('Cancel'),
+          ),
+
+          ElevatedButton(
+            onPressed: () async {
+              final String newName = nameController.text.trim();
+              final String newPhone = phoneController.text.trim();
+              final String newEmail = emailController.text.trim();
+              final String newAddress = addressController.text.trim();
+              final String newUpiId = upiController.text.trim();
+
+             setState(() {
+  userName = newName.isEmpty
+      ? 'RecyConnect User'
+      : newName;
+
+  userPhone = newPhone.isEmpty
+      ? '+91 XXXXX XXXXX'
+      : newPhone;
+
+  userEmail = newEmail.isEmpty
+      ? 'user@recyconnect.app'
+      : newEmail;
+
+  userAddress = newAddress.isEmpty
+      ? 'Add your address'
+      : newAddress;
+
+  userUpiId = newUpiId;
+  collectorUpiId = newUpiId;
+});
+
+              final user = FirebaseAuth.instance.currentUser;
+
+              try {
+                if (user != null) {
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(user.uid)
+                      .set({
+                    'name': userName,
+                    'phone': userPhone,
+                    'email': userEmail,
+                    'address': userAddress,
+                    'upiId': userUpiId,
+                    'updatedAt': FieldValue.serverTimestamp(),
+                  }, SetOptions(merge: true));
+                }
+
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Profile saved successfully'),
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Profile save failed: $e'),
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF008F4C),
+              foregroundColor: Colors.white,
             ),
-          ],
-        );
-      },
-    );
-  }
+            child: const Text('Save'),
+          ),
+        ],
+      );
+    },
+  );
+}
 
   void showComingSoon(String title) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -3168,8 +3281,8 @@ print("IMAGE PATH: ${image.path}");
     var request = http.MultipartRequest(
   'POST',
   Uri.parse(
-  'http://10.163.32.89:8000/analyze-ewaste',
-  ),
+  'https://recyconnect-me23.onrender.com/analyze-ewaste',
+),
 );
 
     request.files.add(
@@ -3415,7 +3528,7 @@ double? userLongitude;
     'Other E-Waste',
   ];
 
-  void createLot() {
+  Future<void> createLot() async {
     final weight = double.tryParse(weightController.text.trim());
 
 if (weightController.text.trim().isEmpty) {
@@ -3454,6 +3567,43 @@ if (!photoAdded || selectedImage == null) {
   return;
 }
 
+final user = FirebaseAuth.instance.currentUser;
+
+if (user == null) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Please login first.'),
+    ),
+  );
+  return;
+}
+
+final userDoc = await FirebaseFirestore.instance
+    .collection('users')
+    .doc(user.uid)
+    .get();
+
+String savedUpiId =
+    userDoc.data()?['upiId']?.toString().trim() ?? '';
+
+// Use the currently loaded profile UPI as fallback
+if (savedUpiId.isEmpty && collectorUpiId.trim().isNotEmpty) {
+  savedUpiId = collectorUpiId.trim();
+}
+
+if (savedUpiId.isEmpty) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        tr(
+          'Please add your Collector UPI ID in Profile first.',
+          'कृपया पहले प्रोफाइल में अपना Collector UPI ID जोड़ें।',
+        ),
+      ),
+    ),
+  );
+  return;
+}
    setState(() {
   lotCreated = true;
 
@@ -3465,7 +3615,7 @@ if (!photoAdded || selectedImage == null) {
 
   final newLot = {
   'lotId': lotId,
-  'collectorUpiId': 'demo.collector@upi',
+  'collectorUpiId': savedUpiId,
   'material': selectedMaterial,
   'weight': weight,
   'latitude': userLatitude,
@@ -6486,6 +6636,133 @@ void dispose() {
   collectorUpiId,
   style: const TextStyle(
     color: Colors.black54,
+  ),
+),
+const SizedBox(height: 18),
+
+Container(
+  width: double.infinity,
+  padding: const EdgeInsets.all(16),
+  decoration: BoxDecoration(
+    color: const Color(0xFFF7FAF8),
+    borderRadius: BorderRadius.circular(14),
+    border: Border.all(
+      color: const Color(0xFFD9E4DD),
+    ),
+  ),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Row(
+        children: [
+          Icon(
+            Icons.alt_route,
+            color: Color(0xFF008F4C),
+          ),
+          SizedBox(width: 8),
+          Text(
+            'QR not working?',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+
+      const SizedBox(height: 8),
+
+      const Text(
+        'Use another payment method with the collector UPI ID.',
+        style: TextStyle(
+          color: Colors.black54,
+        ),
+      ),
+
+      const SizedBox(height: 14),
+
+      Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: collectorUpiId.isEmpty
+                  ? null
+                  : () async {
+                      await Clipboard.setData(
+                        ClipboardData(text: collectorUpiId),
+                      );
+
+                      if (!context.mounted) return;
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Collector UPI ID copied',
+                          ),
+                        ),
+                      );
+                    },
+              icon: const Icon(Icons.copy),
+              label: const Text('Copy UPI ID'),
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: collectorUpiId.isEmpty
+                  ? null
+                  : () async {
+                      final Uri uri = Uri.parse(upiUri);
+
+                      try {
+                        final bool launched = await launchUrl(
+                          uri,
+                          mode: LaunchMode.externalApplication,
+                        );
+
+                        if (!launched && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'No UPI app found. Copy the UPI ID and pay manually.',
+                              ),
+                            ),
+                          );
+                        }
+                      } catch (_) {
+                        if (!context.mounted) return;
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Unable to open UPI app. Use Copy UPI ID.',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+              icon: const Icon(Icons.account_balance_wallet),
+              label: const Text('Open UPI App'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF008F4C),
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+
+      const SizedBox(height: 12),
+
+      Text(
+        'Amount: ₹${widget.amount}',
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    ],
   ),
 ),
               ],
