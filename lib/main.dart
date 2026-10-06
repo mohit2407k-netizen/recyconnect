@@ -14,6 +14,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'firebase_options.dart';
+import 'offline_sync.dart';
 
 
 
@@ -1260,6 +1261,7 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+    await OfflineSyncManager.instance.initialize();
 
   runApp(const RecyConnectApp());
 }
@@ -2697,7 +2699,7 @@ final double totalEarned = completedLots.fold<double>(
               borderRadius: BorderRadius.circular(22),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.10),
+                  color: Colors.black.withValues(alpha: 0.10),
                   blurRadius: 12,
                   offset: const Offset(0, 5),
                 ),
@@ -2717,7 +2719,7 @@ final double totalEarned = completedLots.fold<double>(
                         color: Colors.white,
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withValues(alpha: 0.7),
                           width: 3,
                         ),
                       ),
@@ -2785,7 +2787,7 @@ final double totalEarned = completedLots.fold<double>(
                 Container(
                   padding: const EdgeInsets.all(13),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.12),
+                    color: Colors.white.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Row(
@@ -2800,7 +2802,7 @@ final double totalEarned = completedLots.fold<double>(
                         child: Text(
                           'Every recycled item contributes to a cleaner tomorrow.',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.95),
+                            color: Colors.white.withValues(alpha: 0.95),
                             fontSize: 12,
                           ),
                         ),
@@ -3271,6 +3273,7 @@ Future<void> pickPhoto() async {
     });
   }
 }
+
 Future<void> sendImageToAI(File image) async {
   setState(() {
   isAnalyzing = true;
@@ -3422,28 +3425,26 @@ Future<void> analyzeEWaste() async {
   
 
   Future<void> getCurrentLocation() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+  try {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
     if (!serviceEnabled) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-  content: Text(
-    tr(
-      'Please turn on location services.',
-      'कृपया लोकेशन सेवा चालू करें।',
-    ),
-  ),
-),
+          content: Text(
+            tr(
+              'Please turn on location services.',
+              'कृपया लोकेशन सेवा चालू करें।',
+            ),
+          ),
+        ),
       );
       return;
     }
 
-    permission = await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
 
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -3453,13 +3454,13 @@ Future<void> analyzeEWaste() async {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-  content: Text(
-    tr(
-      'Location permission denied.',
-      'लोकेशन की अनुमति नहीं दी गई।',
-    ),
-  ),
-),
+            content: Text(
+              tr(
+                'Location permission denied.',
+                'लोकेशन की अनुमति नहीं दी गई।',
+              ),
+            ),
+          ),
         );
         return;
       }
@@ -3469,43 +3470,86 @@ Future<void> analyzeEWaste() async {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-         SnackBar(
-  content: Text(
-    tr(
-      'Location permission is permanently denied. Please enable it from Settings.',
-      'लोकेशन की अनुमति स्थायी रूप से बंद है। कृपया सेटिंग्स से इसे चालू करें।',
-    ),
-  ),
-),
-        );
+        SnackBar(
+          content: Text(
+            tr(
+              'Location permission is permanently denied. Please enable it from Settings.',
+              'लोकेशन की अनुमति स्थायी रूप से बंद है। कृपया सेटिंग्स से इसे चालू करें।',
+            ),
+          ),
+        ),
+      );
       return;
     }
 
-    final position = await Geolocator.getCurrentPosition(
-  locationSettings: const LocationSettings(
-    accuracy: LocationAccuracy.high,
-  ),
-);
-setState(() {
-  userLatitude = position.latitude;
-  userLongitude = position.longitude;
-  locationAdded = true;
-});
+    Position? position;
 
-if (!mounted) return;
+    // First try to get a fresh GPS location.
+    try {
+      position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+    } catch (e) {
+      // If offline/current GPS fix fails, use last known location.
+      position = await Geolocator.getLastKnownPosition();
+    }
+
+    if (position == null) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            tr(
+              'Unable to get location. Please move to an open area and try again.',
+              'लोकेशन प्राप्त नहीं हो सकी। खुले स्थान पर जाकर फिर कोशिश करें।',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      userLatitude = position!.latitude;
+      userLongitude = position.longitude;
+      locationAdded = true;
+    });
+
     ScaffoldMessenger.of(context).showSnackBar(
-     SnackBar(
-  content: Text(
-    '${tr(
-      'Location added',
-      'लोकेशन जोड़ दी गई',
-    )}: '
-    '${position.latitude.toStringAsFixed(6)}, '
-    '${position.longitude.toStringAsFixed(6)}',
-  ),
-),
+      SnackBar(
+        content: Text(
+          '${tr(
+            'Location added',
+            'लोकेशन जोड़ दी गई',
+          )}: '
+          '${position.latitude.toStringAsFixed(6)}, '
+          '${position.longitude.toStringAsFixed(6)}',
+        ),
+      ),
     );
+  } catch (e) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          tr(
+            'Unable to get location. Please try again.',
+            'लोकेशन प्राप्त नहीं हो सकी। कृपया फिर कोशिश करें।',
+          ),
+        ),
+      ),
+    );
+
+    debugPrint('Location error: $e');
   }
+}
   String selectedMaterial = 'PCB / Electronic Parts';
 
   final TextEditingController weightController =
@@ -3604,16 +3648,10 @@ if (savedUpiId.isEmpty) {
   );
   return;
 }
-   setState(() {
-  lotCreated = true;
+   lotId =
+    'RC-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
 
-  lotId =
-      'RC-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-     
-
-
-
-  final newLot = {
+final newLot = {
   'lotId': lotId,
   'collectorUpiId': savedUpiId,
   'material': selectedMaterial,
@@ -3626,11 +3664,65 @@ if (savedUpiId.isEmpty) {
 
   // Photo proof
   'photo': selectedImage?.path,
+
+  // Offline sync status
+  'syncStatus': 'pending',
+  'createdAt': DateTime.now().toIso8601String(),
 };
 
-createdLots.add(newLot);
-activeLot = newLot;
+// ------------------------------------------------------------
+// SAVE LOT LOCALLY FIRST
+// ------------------------------------------------------------
+
+await OfflineSyncManager.instance.saveLotLocally(newLot);
+
+// ------------------------------------------------------------
+// UPDATE APP UI
+// ------------------------------------------------------------
+
+if (!mounted) return;
+
+setState(() {
+  lotCreated = true;
+  createdLots.add(newLot);
+  activeLot = newLot;
 });
+
+// ------------------------------------------------------------
+// TRY TO SYNC WITH FIREBASE
+// ------------------------------------------------------------
+
+final online = await OfflineSyncManager.instance.hasInternet();
+
+if (online) {
+  await OfflineSyncManager.instance.syncPendingLots();
+
+  if (!mounted) return;
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        tr(
+          'Lot created and synced successfully.',
+          'लॉट सफलतापूर्वक बनाया और सिंक किया गया।',
+        ),
+      ),
+    ),
+  );
+} else {
+  if (!mounted) return;
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        tr(
+          'Lot saved offline. It will sync automatically when internet is available.',
+          'लॉट ऑफलाइन सेव हो गया। इंटरनेट उपलब्ध होने पर यह अपने आप सिंक हो जाएगा।',
+        ),
+      ),
+    ),
+  );
+}
   }
 
   @override
@@ -3797,9 +3889,9 @@ if (aiMaterial != null) ...[
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(16),
       border: Border.all(
-        color: Colors.green.withOpacity(0.4),
+        color: Colors.green.withValues(alpha: 0.4),
       ),
-      color: Colors.green.withOpacity(0.06),
+      color: Colors.green.withValues(alpha: 0.06),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -4925,12 +5017,13 @@ class _OtpPageState extends State<OtpPage> {
         elevation: 0,
       ),
 
-      body: Padding(
-        padding: const EdgeInsets.all(24),
+      body: SingleChildScrollView(
+  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+  padding: const EdgeInsets.all(24),
 
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
 
             const SizedBox(height: 40),
 
@@ -6475,13 +6568,13 @@ void dispose() {
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: paymentReceived
-                  ? Colors.green.withOpacity(0.08)
-                  : Colors.orange.withOpacity(0.08),
+                  ? Colors.green.withValues(alpha: 0.08)
+                  : Colors.orange.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: paymentSubmitted
-                    ? Colors.green.withOpacity(0.35)
-                    : Colors.orange.withOpacity(0.35),
+                    ? Colors.green.withValues(alpha: 0.35)
+                    : Colors.orange.withValues(alpha: 0.35),
               ),
             ),
             child: Column(
