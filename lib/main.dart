@@ -1925,350 +1925,579 @@ Align(
 
 // ---------------- LOTS ----------------
 
-class LotsPage extends StatelessWidget {
+// ---------------- LOTS ----------------
+
+class LotsPage extends StatefulWidget {
   const LotsPage({super.key});
+
+  @override
+  State<LotsPage> createState() => _LotsPageState();
+}
+
+class _LotsPageState extends State<LotsPage> {
+  bool isLoading = true;
+  List<Map<String, dynamic>> firestoreLots = [];
+
+  @override
+  void initState() {
+    super.initState();
+    loadLots();
+  }
+
+  Future<void> loadLots() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+      return;
+    }
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('lots')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      final lots = snapshot.docs.map((doc) {
+        final data = doc.data();
+
+        return {
+          ...data,
+          'lotId': data['lotId'] ?? doc.id,
+        };
+      }).toList();
+
+      if (!mounted) return;
+
+      setState(() {
+        firestoreLots = lots;
+        isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Load lots error: $e');
+
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            tr(
+              'Unable to load your lots.',
+              'आपके लॉट लोड नहीं हो सके।',
+            ),
+          ),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAF8),
+
       appBar: AppBar(
-        title: const Text('My E-Waste Lots'),
+        title: Text(
+          tr(
+            'My E-Waste Lots',
+            'मेरे ई-वेस्ट लॉट',
+          ),
+        ),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
       ),
-      body: createdLots.isEmpty
+
+      body: isLoading
           ? const Center(
-              child: Text(
-                'No lots created yet.',
-                style: TextStyle(
-                  fontSize: 18,
-                  color: Colors.black54,
-                ),
-              ),
+              child: CircularProgressIndicator(),
             )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: createdLots.length,
-              itemBuilder: (context, index) {
-                final lot = createdLots[index];
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 14),
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              lot['lotId'],
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE2F5EA),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                lot['status'],
-                                style: const TextStyle(
-                                  color: Color(0xFF008F4C),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        Text(
-                          'Material: ${lot['material']}',
-                          style: const TextStyle(fontSize: 15),
-                        ),
-
-                        const SizedBox(height: 6),
-
-                        Text(
-                          'Weight: ${lot['weight']} kg',
-                          style: const TextStyle(fontSize: 15),
-                        ),
-
-                        const SizedBox(height: 6),
-
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.location_on,
-                              size: 18,
-                              color: lot['location'] == true
-                                  ? const Color(0xFF008F4C)
-                                  : Colors.grey,
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              lot['location'] == true
-                                  ? 'Location captured'
-                                  : 'Location not added',
-                            ),
-                          ],
-                        ),
-
-                        if (lot['photo'] != null) ...[
-                          const SizedBox(height: 12),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.file(
-                              File(lot['photo']),
-                              height: 140,
-                              width: double.infinity,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ],
-                      ],
+          : firestoreLots.isEmpty
+              ? Center(
+                  child: Text(
+                    tr(
+                      'No lots created yet.',
+                      'अभी कोई लॉट नहीं बनाया गया है।',
+                    ),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      color: Colors.black54,
                     ),
                   ),
-                );
-              },
-            ),
+                )
+              : RefreshIndicator(
+                  onRefresh: loadLots,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: firestoreLots.length,
+                    itemBuilder: (context, index) {
+                      final lot = firestoreLots[index];
+
+                      final status =
+                          lot['status']?.toString() ?? 'Created';
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 14),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+
+                              // LOT ID + STATUS
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      lot['lotId']
+                                              ?.toString() ??
+                                          'N/A',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight:
+                                            FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+
+                                  Container(
+                                    padding:
+                                        const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
+                                    ),
+                                    decoration:
+                                        BoxDecoration(
+                                      color: const Color(
+                                          0xFFE2F5EA),
+                                      borderRadius:
+                                          BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      status,
+                                      style: const TextStyle(
+                                        color:
+                                            Color(0xFF008F4C),
+                                        fontWeight:
+                                            FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 12),
+
+                              // MATERIAL
+                              Text(
+                                '${tr('Material', 'सामग्री')}: '
+                                '${lot['material'] ?? 'E-Waste'}',
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                ),
+                              ),
+
+                              const SizedBox(height: 6),
+
+                              // WEIGHT
+                              Text(
+                                '${tr('Weight', 'वजन')}: '
+                                '${lot['weight'] ?? 0} kg',
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                ),
+                              ),
+
+                              const SizedBox(height: 6),
+
+                              // LOCATION
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.location_on,
+                                    size: 18,
+                                    color:
+                                        lot['location'] == true
+                                            ? const Color(
+                                                0xFF008F4C)
+                                            : Colors.grey,
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Expanded(
+                                    child: Text(
+                                      lot['location'] == true
+                                          ? tr(
+                                              'Location captured',
+                                              'लोकेशन जोड़ दी गई',
+                                            )
+                                          : tr(
+                                              'Location not added',
+                                              'लोकेशन नहीं जोड़ी गई',
+                                            ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              // AMOUNT
+                              if (lot['amount'] != null) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${tr('Amount', 'राशि')}: '
+                                  '₹${lot['amount']}',
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight:
+                                        FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+
+                              // PHOTO
+                              if (lot['photo'] != null &&
+                                  lot['photo']
+                                      .toString()
+                                      .isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                ClipRRect(
+                                  borderRadius:
+                                      BorderRadius.circular(12),
+                                  child: Image.file(
+                                    File(
+                                      lot['photo'].toString(),
+                                    ),
+                                    height: 140,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
     );
   }
 }
 
 // ---------------- EARNINGS ----------------
 
-class EarningsPage extends StatelessWidget {
+class EarningsPage extends StatefulWidget {
   const EarningsPage({super.key});
 
   @override
+  State<EarningsPage> createState() => _EarningsPageState();
+}
+
+class _EarningsPageState extends State<EarningsPage> {
+  bool isLoading = true;
+
+  List<Map<String, dynamic>> paidLots = [];
+  double totalEarnings = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    loadEarnings();
+  }
+
+  Future<void> loadEarnings() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user == null) {
+        if (mounted) {
+          setState(() {
+            isLoading = false;
+          });
+        }
+        return;
+      }
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection('lots')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      final List<Map<String, dynamic>> loadedLots = [];
+
+      double total = 0;
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+
+        if (data['status'] == 'Verified & Paid' &&
+            data['amount'] != null) {
+          loadedLots.add(data);
+
+          final amount = data['amount'];
+
+          if (amount is num) {
+            total += amount.toDouble();
+          } else {
+            total +=
+                double.tryParse(amount.toString()) ?? 0;
+          }
+        }
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        paidLots = loadedLots;
+        totalEarnings = total;
+        isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Earnings loading error: $e');
+
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final paidLots = createdLots.where((lot) {
-      return lot['status'] == 'Verified & Paid' &&
-          lot['amount'] != null;
-    }).toList();
-
-    final totalEarnings = paidLots.fold<double>(
-      0,
-      (total, lot) => total + (lot['amount'] as num).toDouble(),
-    );
-
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAF8),
+
       appBar: AppBar(
         backgroundColor: const Color(0xFFF7FAF8),
         elevation: 0,
+
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            Navigator.pop(context);
+          },
         ),
-       title: Text(
-  tr('My Earnings', 'मेरी कमाई'),
-  style: TextStyle(
-    fontWeight: FontWeight.bold,
-    color: Colors.black,
-  ),
-),
+
+        title: Text(
+          tr('My Earnings', 'मेरी कमाई'),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+        ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE8F7EE),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Total Earnings',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.black54,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '₹${totalEarnings.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF008F4C),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${paidLots.length} completed transaction${paidLots.length == 1 ? '' : 's'}',
-                  style: const TextStyle(
-                    color: Colors.black54,
-                  ),
-                ),
-              ],
-            ),
-          ),
 
-          const SizedBox(height: 20),
-
-          const Text(
-            'Transaction History',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          if (paidLots.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: const Color(0xFFD9E4DD),
-                ),
+      body: isLoading
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: Color(0xFF008F4C),
               ),
-              child: const Column(
-                children: [
-                  Icon(
-                    Icons.account_balance_wallet_outlined,
-                    size: 48,
-                    color: Color(0xFF008F4C),
-                  ),
-                  SizedBox(height: 12),
-                  Text(
-                    'No earnings yet',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  SizedBox(height: 6),
-                  Text(
-                    'Your completed and paid e-waste transactions will appear here.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.black54,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            )
+          : RefreshIndicator(
+              onRefresh: loadEarnings,
 
-          ...paidLots.map(
-            (lot) {
-              final amount = (lot['amount'] as num).toDouble();
-
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
+              child: ListView(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: const Color(0xFFD9E4DD),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+
+                children: [
+                  // TOTAL EARNINGS
+                  Container(
+                    padding: const EdgeInsets.all(20),
+
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F7EE),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE8F7EE),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.currency_rupee,
-                            color: Color(0xFF008F4C),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            lot['lotId']?.toString() ?? 'No Lot ID',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
                         Text(
-                          '₹${amount.toStringAsFixed(0)}',
+                          tr(
+                            'Total Earnings',
+                            'कुल कमाई',
+                          ),
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 16,
+                            color: Colors.black54,
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        Text(
+                          '₹${totalEarnings.toStringAsFixed(0)}',
+
+                          style: const TextStyle(
+                            fontSize: 32,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF008F4C),
                           ),
                         ),
-                      ],
-                    ),
 
-                    const SizedBox(height: 14),
+                        const SizedBox(height: 6),
 
-                    Text(
-                      lot['material']?.toString() ?? 'E-Waste',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                        Text(
+                          '${paidLots.length} completed transaction${paidLots.length == 1 ? '' : 's'}',
 
-                    const SizedBox(height: 6),
-
-                    Text(
-                      'Weight: ${lot['weight']?.toString() ?? '0'} kg',
-                      style: const TextStyle(
-                        color: Colors.black54,
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.check_circle,
-                          size: 18,
-                          color: Color(0xFF008F4C),
-                        ),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'Verified & Paid',
-                          style: TextStyle(
-                            color: Color(0xFF008F4C),
-                            fontWeight: FontWeight.w600,
+                          style: const TextStyle(
+                            color: Colors.black54,
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // TRANSACTIONS
+                  if (paidLots.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(30),
+
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+
+                      child: Center(
+                        child: Text(
+                          tr(
+                            'No completed payments yet.',
+                            'अभी कोई पूर्ण भुगतान नहीं है।',
+                          ),
+                          textAlign: TextAlign.center,
+
+                          style: const TextStyle(
+                            color: Colors.black54,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    ...paidLots.map((lot) {
+                      return Container(
+                        margin: const EdgeInsets.only(
+                          bottom: 12,
+                        ),
+
+                        padding: const EdgeInsets.all(16),
+
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius:
+                              BorderRadius.circular(16),
+
+                          border: Border.all(
+                            color:
+                                const Color(0xFFD9E4DD),
+                          ),
+                        ),
+
+                        child: Row(
+                          children: [
+                            Container(
+                              padding:
+                                  const EdgeInsets.all(10),
+
+                              decoration: BoxDecoration(
+                                color:
+                                    const Color(0xFFE8F7EE),
+                                borderRadius:
+                                    BorderRadius.circular(12),
+                              ),
+
+                              child: const Icon(
+                                Icons.currency_rupee,
+                                color:
+                                    Color(0xFF008F4C),
+                              ),
+                            ),
+
+                            const SizedBox(width: 12),
+
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+
+                                children: [
+                                  Text(
+                                    lot['lotId']
+                                            ?.toString() ??
+                                        'Lot',
+
+                                    style: const TextStyle(
+                                      fontWeight:
+                                          FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 4),
+
+                                  Text(
+                                    '${lot['material'] ?? 'E-Waste'} • ${lot['weight'] ?? 0} kg',
+
+                                    style:
+                                        const TextStyle(
+                                      color:
+                                          Colors.black54,
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 4),
+
+                                  const Text(
+                                    'Verified & Paid',
+
+                                    style: TextStyle(
+                                      color:
+                                          Color(0xFF008F4C),
+                                      fontWeight:
+                                          FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            Text(
+                              '₹${lot['amount']}',
+
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight:
+                                    FontWeight.bold,
+                                color:
+                                    Color(0xFF008F4C),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ),
     );
   }
 }
@@ -3489,7 +3718,7 @@ Future<void> analyzeEWaste() async {
       position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
+          timeLimit: Duration(seconds: 30),
         ),
       );
     } catch (e) {
@@ -3653,6 +3882,7 @@ if (savedUpiId.isEmpty) {
 
 final newLot = {
   'lotId': lotId,
+  'userId': FirebaseAuth.instance.currentUser!.uid,
   'collectorUpiId': savedUpiId,
   'material': selectedMaterial,
   'weight': weight,
@@ -3669,6 +3899,14 @@ final newLot = {
   'syncStatus': 'pending',
   'createdAt': DateTime.now().toIso8601String(),
 };
+try {
+  await FirebaseFirestore.instance
+      .collection('lots')
+      .doc(lotId)
+      .set(newLot, SetOptions(merge: true));
+} catch (e) {
+  debugPrint('Firestore lot save error: $e');
+}
 
 // ------------------------------------------------------------
 // SAVE LOT LOCALLY FIRST
@@ -5588,7 +5826,14 @@ class FindRecyclerPage extends StatelessWidget {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(
+      builder: (context) => const HomePage(),
+    ),
+    (route) => false,
+  );
+},
         ),
         title: const Text(
           'Find Registered Recycler',
@@ -6148,7 +6393,14 @@ class VerifiedHandoverPage extends StatelessWidget {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(
+      builder: (context) => const HomePage(),
+    ),
+    (route) => false,
+  );
+},
         ),
         title: const Text(
           'Verified Handover',
@@ -6439,7 +6691,7 @@ createPaymentDocument();
         .collection('payments')
         .doc(lotId)
         .snapshots()
-        .listen((snapshot) {
+        .listen((snapshot) async {
       final data = snapshot.data();
 
       if (data == null) return;
@@ -6448,14 +6700,66 @@ createPaymentDocument();
           data['status']?.toString().toLowerCase() ?? '';
 
       if (status == 'paid') {
-        if (mounted) {
-          setState(() {
-            paymentReceived = true;
-            paymentSubmitted = true;
-          });
-        }
-      }
+  final String? lotId = widget.lot?['lotId']?.toString();
+
+  if (lotId != null && lotId.isNotEmpty) {
+    await FirebaseFirestore.instance
+        .collection('lots')
+        .doc(lotId)
+        .set({
+      'status': 'Verified & Paid',
+      'amount': widget.amount,
+      'paidAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  if (!mounted) return;
+
+  setState(() {
+    paymentReceived = true;
+    paymentSubmitted = true;
+  });
+
+  
+}
     });
+  }
+}
+Future<void> markPaymentAsPaid() async {
+  final String? lotId = widget.lot?['lotId']?.toString();
+
+  if (lotId == null || lotId.isEmpty) return;
+
+  try {
+    // 1. Update payment
+    await FirebaseFirestore.instance
+        .collection('payments')
+        .doc(lotId)
+        .set({
+      'status': 'paid',
+      'paidAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    // 2. Update lot
+    await FirebaseFirestore.instance
+        .collection('lots')
+        .doc(lotId)
+        .set({
+      'status': 'Verified & Paid',
+      'amount': widget.amount,
+      'paidAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+  } catch (e) {
+    debugPrint('Payment update error: $e');
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Payment update failed: $e'),
+      ),
+    );
   }
 }
 Future<void> createPaymentDocument() async {
@@ -6537,7 +6841,19 @@ void dispose() {
 
     final DateTime now = DateTime.now();
 
-    return Scaffold(
+    return PopScope(
+  canPop: false,
+  onPopInvokedWithResult: (didPop, result) {
+    if (didPop) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (context) => const HomePage(),
+      ),
+      (route) => false,
+    );
+  },
+  child: Scaffold(
       backgroundColor: const Color(0xFFF7FAF8),
       appBar: AppBar(
         backgroundColor: const Color(0xFFF7FAF8),
@@ -6547,7 +6863,14 @@ void dispose() {
             Icons.arrow_back,
             color: Colors.black,
           ),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(
+      builder: (context) => const HomePage(),
+    ),
+    (route) => false,
+  );
+},
         ),
         title: const Text(
           'Payment & Ledger',
@@ -6846,6 +7169,29 @@ Container(
           ),
         ],
       ),
+      const SizedBox(height: 14),
+
+SizedBox(
+  width: double.infinity,
+  child: ElevatedButton.icon(
+    onPressed: paymentReceived
+        ? null
+        : () async {
+            await markPaymentAsPaid();
+          },
+    icon: const Icon(Icons.check_circle),
+    label: Text(
+      paymentReceived
+          ? 'Payment Confirmed'
+          : 'I Have Paid',
+    ),
+    style: ElevatedButton.styleFrom(
+      backgroundColor: const Color(0xFF008F4C),
+      foregroundColor: Colors.white,
+      padding: const EdgeInsets.symmetric(vertical: 14),
+    ),
+  ),
+),
 
       const SizedBox(height: 12),
 
@@ -6987,8 +7333,11 @@ Container(
           const SizedBox(height: 20),
         ],
       ),
+  ),
     );
   }
+  
+
 
   static Widget _ledgerRow(
     IconData icon,
